@@ -7,12 +7,12 @@ import (
 )
 
 type PhoneList struct {
-	Number       string
-	IsCalled     bool
-	StartCalling bool
-	Response     string
-	Time         int64
-	index        int
+	Number       string // 待拨的号码
+	IsCalled     bool   // 是否已经外呼过
+	StartCalling bool   // 是否正在外呼
+	Response     string // 外呼结果
+	Time         int64  // 外呼时长
+	index        int    // 外呼是所在的go线程编号
 }
 
 const (
@@ -24,10 +24,6 @@ var (
 	gPhoneList []PhoneList
 	gChanStart [gMaxChan]chan bool
 )
-
-func init() {
-
-}
 
 func main() {
 	end := make(chan int)
@@ -47,7 +43,7 @@ func main() {
 		gChanStart[i] = make(chan bool)
 	}
 
-	//	处理电话自动外呼
+	//	根据线路并发量，开通多个通道外呼
 	for i := 0; i < gMaxChan; i++ {
 		go call(i)
 	}
@@ -75,7 +71,7 @@ func call(i int) {
 			return
 		}
 
-		cmd := "api originate sofia/gateway/4008000/" + phone.Number + " &echo"
+		cmd := "api originate sofia/gateway/4008000/" + phone.Number + " &playback(/tmp/info.wav)"
 		ev, err := conn.Send(cmd)
 		if err != nil {
 			logging.Error("send err :[%v]", err)
@@ -87,11 +83,10 @@ func call(i int) {
 		time.Sleep(10 * time.Second)
 		// 等待通道释放
 		chanVar := <-gChanStart[i]
-
-		logging.Debug("Free Channel %d", i)
 	}
 }
 
+// 电话挂断事件监听
 func listenEvent() {
 	conn, conerr := eventsocket.Dial("192.168.5.206:8021", "ClueCon")
 	for {
@@ -111,6 +106,7 @@ func listenEvent() {
 	}
 }
 
+// 过滤挂断事件
 func readEvent(conn *eventsocket.Connection) {
 	ev, err := conn.ReadEvent()
 	if err != nil {
@@ -123,6 +119,7 @@ func readEvent(conn *eventsocket.Connection) {
 	}
 }
 
+// 释放已挂断的线路，准备下一通呼叫
 func hungUp(ev *eventsocket.Event) {
 
 	logging.Debug("EventName:%s", ev.EventName())
@@ -142,13 +139,12 @@ func hungUp(ev *eventsocket.Event) {
 
 	time.Sleep(5 * time.Second)
 
-	logging.Debug("11hungUp %d", callInfo.index)
-
 	gChanStart[callInfo.index] <- true
-
-	logging.Debug("22hungUp %d", callInfo.index)
 }
 
+// --------------------------------------------------------------------------------
+
+// 初始化自动外呼列表
 func initPhoneList() {
 	// 自动外呼列表
 	list := []string{"01385****", "159*****", "159******", "137****"}
@@ -162,6 +158,7 @@ func initPhoneList() {
 	}
 }
 
+// 获取下一通准备外呼的号码
 func getNeedCallingNumber(index int) *PhoneList {
 	for i := 0; i < len(gPhoneList); i++ {
 		if gPhoneList[i].IsCalled == false && gPhoneList[i].StartCalling == false {
@@ -173,6 +170,7 @@ func getNeedCallingNumber(index int) *PhoneList {
 	return nil
 }
 
+// 获取外呼号码的信息列表
 func getNumberInfo(number string) *PhoneList {
 	for i := 0; i < len(gPhoneList); i++ {
 		if gPhoneList[i].Number == number {
