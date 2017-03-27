@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
+	"time"
+
 	"autocall/eventsocket"
 	"autocall/logging"
-	"time"
 )
 
 type PhoneList struct {
@@ -16,8 +18,7 @@ type PhoneList struct {
 }
 
 const (
-	// 根据线路的并发量确定线程的数目
-	gMaxChan = 2
+	gMaxChan = 2 // 根据线路的并发量确定线程的数目
 )
 
 var (
@@ -45,7 +46,8 @@ func main() {
 
 	//	根据线路并发量，开通多个通道外呼
 	for i := 0; i < gMaxChan; i++ {
-		go call(i)
+		cmd := "api originate sofia/gateway/4008000/%s &playback(/tmp/info.wav)"
+		go call(i, cmd)
 	}
 
 	// 处理电话挂断释放线路
@@ -54,33 +56,33 @@ func main() {
 	end <- 1
 }
 
-func call(i int) {
+func call(i int, cmd string) {
+	logging.Debug("call start")
 	for {
-		logging.Debug("call start")
 
 		// 获取下一个待外呼的电话
 		phone := getNeedCallingNumber(i)
 		if phone == nil {
 			return
 		}
-		logging.Debug(" --> starting outcall :%s", phone.Number)
 
+		logging.Debug(" --> outGoing call :%s", phone.Number)
 		conn, err := eventsocket.Dial("192.168.5.206:8021", "ClueCon")
 		if err != nil {
 			logging.Error("conn err :[%v]", err)
 			return
 		}
+		defer conn.Close()
 
-		cmd := "api originate sofia/gateway/4008000/" + phone.Number + " &playback(/tmp/info.wav)"
+		cmd = fmt.Sprintf(cmd, phone.Number)
 		ev, err := conn.Send(cmd)
 		if err != nil {
 			logging.Error("send err :[%v]", err)
 			return
 		}
 		logging.Debug("call number:%s ,Result:%v", phone.Number, ev.Body)
-		conn.Close()
-
 		time.Sleep(10 * time.Second)
+
 		// 等待通道释放
 		chanVar := <-gChanStart[i]
 	}
