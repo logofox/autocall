@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"time"
 
 	"autocall/eventsocket"
@@ -26,34 +28,45 @@ var (
 	gChanStart [gMaxChan]chan bool
 )
 
+func HelloServer(w http.ResponseWriter, req *http.Request) {
+	io.WriteString(w, "hello, Docker!\n")
+}
+
 func main() {
-	end := make(chan int)
-	initPhoneList()
 
-	logging.SetLogModel(true, true, ":3360")
-
-	logging.Info("---------------------------------------------")
-	logging.Info("%s", "AUTO_CALL")
-	logging.Info("Server started, version %s", "V0.1")
-	logging.Info("---------------------------------------------")
-	logging.Info("Start-up time: %s", time.Now().Format("2006-01-02 15:04:05"))
-	logging.Info("Logging Port %s", ":3360")
-
-	// 初始化chan array
-	for i := range gChanStart {
-		gChanStart[i] = make(chan bool)
+	http.HandleFunc("/hello", HelloServer)
+	err := http.ListenAndServe(":12345", nil)
+	if err != nil {
+		logging.Fatal("ListenAndServe: ", err)
 	}
 
-	//	根据线路并发量，开通多个通道外呼
-	for i := 0; i < gMaxChan; i++ {
-		cmd := "api originate sofia/gateway/4008000/%s &playback(/tmp/info.wav)"
-		go call(i, cmd)
-	}
+	// end := make(chan int)
+	// initPhoneList()
 
-	// 处理电话挂断释放线路
-	go listenEvent()
+	// logging.SetLogModel(true, true, ":3360")
 
-	end <- 1
+	// logging.Info("---------------------------------------------")
+	// logging.Info("%s", "AUTO_CALL")
+	// logging.Info("Server started, version %s", "V0.1")
+	// logging.Info("---------------------------------------------")
+	// logging.Info("Start-up time: %s", time.Now().Format("2006-01-02 15:04:05"))
+	// logging.Info("Logging Port %s", ":3360")
+
+	// // 初始化chan array
+	// for i := range gChanStart {
+	// 	gChanStart[i] = make(chan bool)
+	// }
+
+	// //	根据线路并发量，开通多个通道外呼
+	// for i := 0; i < gMaxChan; i++ {
+	// 	cmd := "api originate sofia/gateway/4008000/%s &playback(/tmp/info.wav)"
+	// 	go call(i, cmd)
+	// }
+
+	// // 处理电话挂断释放线路
+	// go listenEvent()
+
+	// end <- 1
 }
 
 func call(i int, cmd string) {
@@ -84,7 +97,7 @@ func call(i int, cmd string) {
 		time.Sleep(10 * time.Second)
 
 		// 等待通道释放
-		chanVar := <-gChanStart[i]
+		// chanVar := <-gChanStart[i]
 	}
 }
 
